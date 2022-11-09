@@ -11,6 +11,7 @@ use Data::Dumper;
 use Net::LDAP;
 use Carp;
 use Time::HiRes qw( time );
+use DateTime;
 ########################################################################
 ########################################################################
 # parameters and plugin configuration
@@ -83,6 +84,24 @@ sub parse_csn {
 	warn "D! parse_csn: parsed to: utime: $utime, count: $count, sid: $sid, mod: $mod" if $debug;
 	return ($utime, $count, $sid, $mod);
 }    # END pars_csn
+
+sub parse_datetime {
+	my ($dt) = @_;
+	warn "D! parse_datetime: got " . $dt if $debug;
+	my ($year, $month, $day, $h, $m, $s) = ($dt =~ m/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/g);
+	warn "D! parse_datetime: parsed to: year: $year, month: $month, day: $day, hour: $h, minut: $m, second, $s" if $debug;
+	my $dt_object = DateTime->new(
+		year       => $year,
+		month      => $month,
+		day        => $day,
+		hour       => $h,
+		minute     => $m,
+		second     => $s,
+		nanosecond => 0,
+		time_zone  => 'UTC',
+	);
+	return $dt_object;
+}    # END parse_datetime
 
 sub get_masteruri {
 	my $conn = $_[0];
@@ -378,8 +397,10 @@ for my $instancename (keys %slapd_instances) {
 
 					my @slavecsn_elts  = parse_csn($slaveCSN);
 					my @mastercsn_elts = parse_csn($masterCSN);
-					my $deltacsn       = abs($mastercsn_elts[0] - $slavecsn_elts[0]);
-
+					my $dt_slave = parse_datetime($slavecsn_elts[0]);
+					my $dt_master = parse_datetime($mastercsn_elts[0]);
+					my $deltacsn = $dt_master->subtract_datetime($dt_slave);
+					$deltacsn = ($deltacsn->in_units('days') * 24 * 3600) + ($deltacsn->in_units('minutes') * 60) + $deltacsn->in_units('seconds');
 					say $instancename . "," . $master_ref->{server} . "," . sprintf("%.2f", $deltacsn);
 					my $message = $master_conn->unbind();
 					$message->code && croak "could not unbind from server: " . $message->error;
